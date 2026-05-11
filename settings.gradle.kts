@@ -24,4 +24,4 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "approov-service-webview"
+rootProject.name = "approov-service-android-webview"

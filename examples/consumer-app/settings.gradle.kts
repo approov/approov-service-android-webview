@@ -16,5 +16,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "ConsumerExample"
 include(":app")
-include(":approov-service-webview")
-project(":approov-service-webview").projectDir = file("third_party/approov-service-webview")
+include(":approov-service-android-webview")
+project(":approov-service-android-webview").projectDir = file("third_party/approov-service-android-webview")

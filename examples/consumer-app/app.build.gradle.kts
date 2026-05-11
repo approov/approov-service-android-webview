@@ -26,5 +26,5 @@ android {
 }
 
 dependencies {
-    implementation(project(":approov-service-webview"))
+    implementation(project(":approov-service-android-webview"))
 }

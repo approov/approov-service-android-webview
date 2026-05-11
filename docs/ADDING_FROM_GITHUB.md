@@ -7,7 +7,7 @@ This library is meant to be consumed from source, not from a Maven repository.
 Add the repo inside your app:
 
 ```bash
-git submodule add <your-github-url> third_party/approov-service-webview
+git submodule add <your-github-url> third_party/approov-service-android-webview
 git submodule update --init --recursive
 ```
 
@@ -35,8 +35,8 @@ dependencyResolutionManagement {
 
 rootProject.name = "YourApp"
 include(":app")
-include(":approov-service-webview")
-project(":approov-service-webview").projectDir = file("third_party/approov-service-webview")
+include(":approov-service-android-webview")
+project(":approov-service-android-webview").projectDir = file("third_party/approov-service-android-webview")
 ```
 
 ## `app/build.gradle.kts`
@@ -70,7 +70,7 @@ android {
 }
 
 dependencies {
-    implementation(project(":approov-service-webview"))
+    implementation(project(":approov-service-android-webview"))
 }
 ```
 

@@ -1,4 +1,4 @@
-# Approov Service WebView for Android
+# Approov Service Android WebView
 
 Standalone Android library repo for protecting `WebView` API traffic with Approov through the Approov OkHttp SDK.
 
@@ -33,7 +33,7 @@ The supported flow is:
 
 1. add this repo to your app repo as a git submodule or sibling checkout
 2. include it in your Gradle settings as a project
-3. depend on it with `implementation(project(":approov-service-webview"))`
+3. depend on it with `implementation(project(":approov-service-android-webview"))`
 
 Use the exact snippets in [docs/ADDING_FROM_GITHUB.md]
 
