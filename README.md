@@ -88,10 +88,25 @@ because they cannot preserve browser behavior for arbitrary sites.
 - This is not a plain remote package URL. Consumers cannot use `implementation("https://github.com/...")`.
 - Consumers must include the repo source in their Gradle build.
 - Keep `addNativeRequestRule(...)` narrow. Only protect the API hosts and paths that actually need Approov.
+- Requests are routed only when they match an explicit native request rule or secret-header rule.
 - `fetch` and XHR are the safe default transport hooks. Arbitrary browser-managed subresources such as every `<script>` or `<img>` request are not transparently rewritten by this library.
 - Do not let `addNativeRequestRule(...)` or `addSecretHeader(...)` match HTML page routes unless you have explicitly enabled and validated the relevant HTML replay option.
+- For Cloudflare-fronted sites, leave challenge traffic on WebView networking. If you must protect a broad host path, use excluded path prefixes such as `/cdn-cgi`, and do not add `challenges.cloudflare.com` as a native request rule.
+- `setInterceptXMLHttpRequests(false)` leaves the WebView's native XHR constructor untouched when a site depends on browser-native XHR behavior and can use `fetch` or forms for protected calls.
 - `setProtectSameFrameHtmlFormSubmissions(true)` Use it only for tightly controlled form endpoints that have been validated end to end.
 - `setInterceptMainFrameNavigations(true)` Use it only when you intentionally want matching top-level page loads to bypass the normal WebView network stack.
+
+Example broad host rule with Cloudflare challenge paths excluded:
+
+```java
+import java.util.Arrays;
+
+.addNativeRequestRule(new ApproovWebViewNativeRequestRule(
+    "www.example.com",
+    "/",
+    Arrays.asList("/cdn-cgi")
+))
+```
 
 ## Build
 

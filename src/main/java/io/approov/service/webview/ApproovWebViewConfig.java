@@ -26,6 +26,7 @@ public final class ApproovWebViewConfig {
     private final String approovTokenHeaderName;
     private final boolean allowRequestsWithoutApproov;
     private final boolean serviceLoggingEnabled;
+    private final boolean interceptXMLHttpRequests;
     private final boolean interceptMainFrameNavigations;
     private final boolean protectSameFrameHtmlFormSubmissions;
     private final ApproovWebViewLogLevel okHttpLogLevel;
@@ -40,6 +41,7 @@ public final class ApproovWebViewConfig {
         approovTokenHeaderName = builder.approovTokenHeaderName;
         allowRequestsWithoutApproov = builder.allowRequestsWithoutApproov;
         serviceLoggingEnabled = builder.serviceLoggingEnabled;
+        interceptXMLHttpRequests = builder.interceptXMLHttpRequests;
         interceptMainFrameNavigations = builder.interceptMainFrameNavigations;
         protectSameFrameHtmlFormSubmissions = builder.protectSameFrameHtmlFormSubmissions;
         okHttpLogLevel = builder.okHttpLogLevel;
@@ -67,6 +69,10 @@ public final class ApproovWebViewConfig {
 
     public boolean isServiceLoggingEnabled() {
         return serviceLoggingEnabled;
+    }
+
+    public boolean interceptsXMLHttpRequests() {
+        return interceptXMLHttpRequests;
     }
 
     public boolean interceptsMainFrameNavigations() {
@@ -103,6 +109,7 @@ public final class ApproovWebViewConfig {
         private String approovTokenHeaderName = "approov-token";
         private boolean allowRequestsWithoutApproov = true;
         private boolean serviceLoggingEnabled = false;
+        private boolean interceptXMLHttpRequests = true;
         private boolean interceptMainFrameNavigations = false;
         private boolean protectSameFrameHtmlFormSubmissions = false;
         private ApproovWebViewLogLevel okHttpLogLevel = ApproovWebViewLogLevel.NONE;
@@ -152,6 +159,17 @@ public final class ApproovWebViewConfig {
          */
         public Builder setServiceLoggingEnabled(boolean serviceLoggingEnabled) {
             this.serviceLoggingEnabled = serviceLoggingEnabled;
+            return this;
+        }
+
+        /**
+         * Enables the JavaScript {@code XMLHttpRequest} bridge for matching protected endpoints.
+         *
+         * <p>Defaults to {@code true}. Set to {@code false} if a hosted page depends on the WebView's
+         * untouched native XHR surface and can use {@code fetch()} or form replay for protected calls.
+         */
+        public Builder setInterceptXMLHttpRequests(boolean interceptXMLHttpRequests) {
+            this.interceptXMLHttpRequests = interceptXMLHttpRequests;
             return this;
         }
 

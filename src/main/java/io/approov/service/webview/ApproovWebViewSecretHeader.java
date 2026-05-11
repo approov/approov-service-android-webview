@@ -1,6 +1,7 @@
 package io.approov.service.webview;
 
 import java.net.URI;
+import java.util.Locale;
 
 /**
  * Describes a secret header that should be injected natively for matching outbound requests.
@@ -21,8 +22,8 @@ public final class ApproovWebViewSecretHeader {
         String headerName,
         String headerValue
     ) {
-        this.host = requireNonBlank(host, "host");
-        this.pathPrefix = pathPrefix == null ? "" : pathPrefix;
+        this.host = requireNonBlank(host, "host").trim().toLowerCase(Locale.ROOT);
+        this.pathPrefix = normalizePathPrefix(pathPrefix);
         this.headerName = requireNonBlank(headerName, "headerName");
         this.headerValue = requireNonBlank(headerValue, "headerValue");
     }
@@ -48,11 +49,12 @@ public final class ApproovWebViewSecretHeader {
             return false;
         }
 
-        if (!host.equalsIgnoreCase(uri.getHost())) {
+        if (!host.equals(uri.getHost().toLowerCase(Locale.ROOT))) {
             return false;
         }
 
-        return pathPrefix.isEmpty() || uri.getPath().startsWith(pathPrefix);
+        String path = uri.getPath() == null || uri.getPath().isEmpty() ? "/" : uri.getPath();
+        return pathMatches(path, pathPrefix);
     }
 
     private static String requireNonBlank(String value, String fieldName) {
@@ -61,5 +63,30 @@ public final class ApproovWebViewSecretHeader {
         }
 
         return value;
+    }
+
+    private static String normalizePathPrefix(String pathPrefix) {
+        if (pathPrefix == null || pathPrefix.isBlank()) {
+            return "/";
+        }
+
+        String trimmedPathPrefix = pathPrefix.trim();
+        String normalizedPathPrefix = trimmedPathPrefix.startsWith("/")
+            ? trimmedPathPrefix
+            : "/" + trimmedPathPrefix;
+
+        while (normalizedPathPrefix.length() > 1 && normalizedPathPrefix.endsWith("/")) {
+            normalizedPathPrefix = normalizedPathPrefix.substring(0, normalizedPathPrefix.length() - 1);
+        }
+
+        return normalizedPathPrefix;
+    }
+
+    private static boolean pathMatches(String path, String pathPrefix) {
+        if ("/".equals(pathPrefix)) {
+            return true;
+        }
+
+        return path.equals(pathPrefix) || path.startsWith(pathPrefix + "/");
     }
 }

@@ -347,6 +347,10 @@ public final class ApproovWebViewService {
         String credentialsMode = webRequest.optString("credentialsMode", "same-origin");
 
         URI requestUri = URI.create(url);
+        if (!matchesNativeRequestRule(requestUri)) {
+            throw new SecurityException("WebView request URL does not match native request rules: " + url);
+        }
+
         Request.Builder requestBuilder = new Request.Builder()
             .url(url)
             .tag(
@@ -823,6 +827,7 @@ public final class ApproovWebViewService {
         try {
             JSONObject bridgeConfig = new JSONObject();
             bridgeConfig.put("nativeRequestRules", buildNativeRequestRulesJson());
+            bridgeConfig.put("interceptXMLHttpRequests", config.interceptsXMLHttpRequests());
             bridgeConfig.put(
                 "protectSameFrameHtmlFormSubmissions",
                 config.protectsSameFrameHtmlFormSubmissions()
@@ -857,7 +862,11 @@ public final class ApproovWebViewService {
         Set<String> serializedRules,
         ApproovWebViewNativeRequestRule nativeRequestRule
     ) throws JSONException {
-        String ruleKey = nativeRequestRule.getHost().toLowerCase(Locale.US) + "|" + nativeRequestRule.getPathPrefix();
+        String ruleKey = nativeRequestRule.getHost().toLowerCase(Locale.US)
+            + "|"
+            + nativeRequestRule.getPathPrefix()
+            + "|"
+            + String.join(",", nativeRequestRule.getExcludedPathPrefixes());
         if (!serializedRules.add(ruleKey)) {
             return;
         }
@@ -865,6 +874,10 @@ public final class ApproovWebViewService {
         JSONObject nativeRequestRuleJson = new JSONObject();
         nativeRequestRuleJson.put("host", nativeRequestRule.getHost());
         nativeRequestRuleJson.put("pathPrefix", nativeRequestRule.getPathPrefix());
+        nativeRequestRuleJson.put(
+            "excludedPathPrefixes",
+            new JSONArray(nativeRequestRule.getExcludedPathPrefixes())
+        );
         nativeRequestRulesJson.put(nativeRequestRuleJson);
     }
 
@@ -876,10 +889,6 @@ public final class ApproovWebViewService {
         String scheme = requestUri.getScheme();
         if (!"http".equalsIgnoreCase(scheme) && !"https".equalsIgnoreCase(scheme)) {
             return false;
-        }
-
-        if (config.getNativeRequestRules().isEmpty() && config.getSecretHeaders().isEmpty()) {
-            return true;
         }
 
         for (ApproovWebViewNativeRequestRule nativeRequestRule : config.getNativeRequestRules()) {

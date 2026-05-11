@@ -25,6 +25,7 @@
 
   const BRIDGE_NAME = "ApproovNativeBridge";
   const bridgeConfig = window.__approovWebViewConfig || {};
+  const interceptXMLHttpRequests = bridgeConfig.interceptXMLHttpRequests !== false;
   const protectSameFrameHtmlFormSubmissions = !!bridgeConfig.protectSameFrameHtmlFormSubmissions;
   const nativeRequestRules = Array.isArray(bridgeConfig.nativeRequestRules)
     ? bridgeConfig.nativeRequestRules.filter(function (rule) {
@@ -85,18 +86,40 @@
     throw new Error("Unsupported request input type.");
   }
 
+  function matchesPathPrefix(pathname, pathPrefix) {
+    let normalizedPathPrefix = typeof pathPrefix === "string" && pathPrefix.trim() !== ""
+      ? pathPrefix.trim()
+      : "/";
+    if (normalizedPathPrefix.indexOf("/") !== 0) {
+      normalizedPathPrefix = "/" + normalizedPathPrefix;
+    }
+    while (normalizedPathPrefix.length > 1 && normalizedPathPrefix.lastIndexOf("/") === normalizedPathPrefix.length - 1) {
+      normalizedPathPrefix = normalizedPathPrefix.substring(0, normalizedPathPrefix.length - 1);
+    }
+    return normalizedPathPrefix === "/"
+      ? true
+      : pathname === normalizedPathPrefix || pathname.indexOf(normalizedPathPrefix + "/") === 0;
+  }
+
   // The native side injects a serialized allow-list of request rules. We match against that allow-list
   // in JS first so we only send intended traffic through the bridge.
   function matchesNativeRequestRule(url) {
     if (nativeRequestRules.length === 0) {
-      return true;
+      return false;
     }
 
     return nativeRequestRules.some(function (rule) {
-      const rulePathPrefix = typeof rule.pathPrefix === "string" ? rule.pathPrefix : "";
-      return typeof rule.host === "string"
-        && rule.host.toLowerCase() === url.host.toLowerCase()
-        && (rulePathPrefix === "" || url.pathname.indexOf(rulePathPrefix) === 0);
+      const excludedPathPrefixes = Array.isArray(rule.excludedPathPrefixes)
+        ? rule.excludedPathPrefixes
+        : [];
+      const rulePathPrefix = typeof rule.pathPrefix === "string" ? rule.pathPrefix : "/";
+      const hostMatches = typeof rule.host === "string"
+        && rule.host.toLowerCase() === url.hostname.toLowerCase();
+      const pathMatches = matchesPathPrefix(url.pathname || "/", rulePathPrefix);
+      const pathExcluded = excludedPathPrefixes.some(function (excludedPathPrefix) {
+        return matchesPathPrefix(url.pathname || "/", excludedPathPrefix);
+      });
+      return hostMatches && pathMatches && !pathExcluded;
     });
   }
 
@@ -694,235 +717,399 @@
     }
   }
 
-  function NativeXMLHttpRequest() {
-    /*
-     * This is a compatibility wrapper, not a full reimplementation of every XHR behavior.
-     *
-     * For unmatched URLs, it delegates to the platform XMLHttpRequest instance.
-     * For matched URLs, it translates open/setRequestHeader/send into a native bridge request.
-     *
-     * The intent is to preserve existing page code, but complex third-party scripts may still depend
-     * on parts of the XHR surface that are not modeled here. That is why fetch() remains the preferred
-     * protected transport whenever possible.
-     */
-    this._delegate = null;
-    this._headers = {};
-    this._listeners = {};
-    this._method = "GET";
-    this._responseHeaders = {};
-    this._url = "";
-    this.readyState = NativeXMLHttpRequest.UNSENT;
-    this.response = "";
-    this.responseText = "";
-    this.responseType = "";
-    this.responseURL = "";
-    this.status = 0;
-    this.statusText = "";
-    this.withCredentials = false;
-    this.onreadystatechange = null;
-    this.onload = null;
-    this.onerror = null;
-    this.onloadend = null;
+  function makeXhrEvent(type) {
+    try {
+      return new Event(type);
+    } catch (error) {
+      const event = document.createEvent("Event");
+      event.initEvent(type, false, false);
+      return event;
+    }
   }
 
-  NativeXMLHttpRequest.UNSENT = 0;
-  NativeXMLHttpRequest.OPENED = 1;
-  NativeXMLHttpRequest.HEADERS_RECEIVED = 2;
-  NativeXMLHttpRequest.LOADING = 3;
-  NativeXMLHttpRequest.DONE = 4;
+  function getXmlHttpRequestDescriptor(propertyName) {
+    let prototype = OriginalXMLHttpRequest && OriginalXMLHttpRequest.prototype;
+    while (prototype) {
+      const descriptor = Object.getOwnPropertyDescriptor(prototype, propertyName);
+      if (descriptor) {
+        return descriptor;
+      }
 
-  NativeXMLHttpRequest.prototype.addEventListener = function (type, listener) {
-    if (!this._listeners[type]) {
-      this._listeners[type] = [];
+      prototype = Object.getPrototypeOf(prototype);
     }
 
-    this._listeners[type].push(listener);
-  };
+    return null;
+  }
 
-  NativeXMLHttpRequest.prototype.removeEventListener = function (type, listener) {
-    if (!this._listeners[type]) {
+  function getNativeXhrProperty(xhr, propertyName) {
+    const descriptor = getXmlHttpRequestDescriptor(propertyName);
+    if (descriptor && typeof descriptor.get === "function") {
+      return descriptor.get.call(xhr);
+    }
+
+    return xhr[propertyName];
+  }
+
+  function setNativeXhrProperty(xhr, propertyName, value) {
+    const descriptor = getXmlHttpRequestDescriptor(propertyName);
+    if (descriptor && typeof descriptor.set === "function") {
+      descriptor.set.call(xhr, value);
       return;
     }
 
-    this._listeners[type] = this._listeners[type].filter(function (candidate) {
-      return candidate !== listener;
+    xhr[propertyName] = value;
+  }
+
+  function applyProtectedXhrResponseBody(protectedState, responseText) {
+    switch (protectedState.responseType) {
+      case "json":
+        protectedState.responseText = responseText;
+        try {
+          protectedState.response = responseText ? JSON.parse(responseText) : null;
+        } catch (error) {
+          protectedState.response = null;
+        }
+        break;
+      case "arraybuffer":
+      case "blob":
+        // The Android bridge currently transports response bodies as text.
+        protectedState.responseText = "";
+        protectedState.response = responseText;
+        break;
+      case "":
+      case "text":
+      default:
+        protectedState.responseText = responseText;
+        protectedState.response = responseText;
+    }
+  }
+
+  function ApproovXMLHttpRequest() {
+    // Return a real platform XHR instance. Only matching protected requests switch the instance into
+    // synthetic state; unprotected requests call the bound native methods directly.
+    const xhr = new OriginalXMLHttpRequest();
+    const nativeOpen = xhr.open.bind(xhr);
+    const nativeSend = xhr.send.bind(xhr);
+    const nativeAbort = xhr.abort.bind(xhr);
+    const nativeSetRequestHeader = xhr.setRequestHeader.bind(xhr);
+    const nativeGetResponseHeader = xhr.getResponseHeader.bind(xhr);
+    const nativeGetAllResponseHeaders = xhr.getAllResponseHeaders.bind(xhr);
+    const nativeOverrideMimeType = typeof xhr.overrideMimeType === "function"
+      ? xhr.overrideMimeType.bind(xhr)
+      : null;
+    const protectedState = {
+      active: false,
+      aborted: false,
+      headers: {},
+      method: "GET",
+      readyState: 0,
+      response: null,
+      responseHeaders: {},
+      responseText: "",
+      responseType: getNativeXhrProperty(xhr, "responseType") || "",
+      responseURL: "",
+      status: 0,
+      statusText: "",
+      timeout: getNativeXhrProperty(xhr, "timeout") || 0,
+      url: "",
+      withCredentials: getNativeXhrProperty(xhr, "withCredentials") || false
+    };
+
+    function changeProtectedReadyState(nextState) {
+      protectedState.readyState = nextState;
+      xhr.dispatchEvent(makeXhrEvent("readystatechange"));
+    }
+
+    Object.defineProperties(xhr, {
+      readyState: {
+        configurable: true,
+        enumerable: true,
+        get: function () {
+          return protectedState.active
+            ? protectedState.readyState
+            : getNativeXhrProperty(xhr, "readyState");
+        }
+      },
+      status: {
+        configurable: true,
+        enumerable: true,
+        get: function () {
+          return protectedState.active
+            ? protectedState.status
+            : getNativeXhrProperty(xhr, "status");
+        }
+      },
+      statusText: {
+        configurable: true,
+        enumerable: true,
+        get: function () {
+          return protectedState.active
+            ? protectedState.statusText
+            : getNativeXhrProperty(xhr, "statusText");
+        }
+      },
+      response: {
+        configurable: true,
+        enumerable: true,
+        get: function () {
+          return protectedState.active
+            ? protectedState.response
+            : getNativeXhrProperty(xhr, "response");
+        }
+      },
+      responseText: {
+        configurable: true,
+        enumerable: true,
+        get: function () {
+          return protectedState.active
+            ? protectedState.responseText
+            : getNativeXhrProperty(xhr, "responseText");
+        }
+      },
+      responseType: {
+        configurable: true,
+        enumerable: true,
+        get: function () {
+          return protectedState.active
+            ? protectedState.responseType
+            : getNativeXhrProperty(xhr, "responseType");
+        },
+        set: function (value) {
+          if (protectedState.active) {
+            protectedState.responseType = value || "";
+            return;
+          }
+
+          setNativeXhrProperty(xhr, "responseType", value);
+        }
+      },
+      responseURL: {
+        configurable: true,
+        enumerable: true,
+        get: function () {
+          return protectedState.active
+            ? protectedState.responseURL
+            : getNativeXhrProperty(xhr, "responseURL");
+        }
+      },
+      responseXML: {
+        configurable: true,
+        enumerable: true,
+        get: function () {
+          return protectedState.active
+            ? null
+            : getNativeXhrProperty(xhr, "responseXML");
+        }
+      },
+      timeout: {
+        configurable: true,
+        enumerable: true,
+        get: function () {
+          return protectedState.active
+            ? protectedState.timeout
+            : getNativeXhrProperty(xhr, "timeout");
+        },
+        set: function (value) {
+          if (protectedState.active) {
+            protectedState.timeout = Number(value) || 0;
+            return;
+          }
+
+          setNativeXhrProperty(xhr, "timeout", value);
+        }
+      },
+      withCredentials: {
+        configurable: true,
+        enumerable: true,
+        get: function () {
+          return protectedState.active
+            ? protectedState.withCredentials
+            : getNativeXhrProperty(xhr, "withCredentials");
+        },
+        set: function (value) {
+          if (protectedState.active) {
+            protectedState.withCredentials = Boolean(value);
+            return;
+          }
+
+          setNativeXhrProperty(xhr, "withCredentials", value);
+        }
+      }
     });
-  };
 
-  NativeXMLHttpRequest.prototype._emit = function (type) {
-    if (typeof this["on" + type] === "function") {
-      this["on" + type].call(this);
-    }
+    xhr.open = function (method, url, async, user, password) {
+      const resolvedUrl = new URL(url, window.location.href).toString();
 
-    (this._listeners[type] || []).forEach(function (listener) {
-      listener.call(this);
-    }, this);
-  };
+      protectedState.aborted = false;
+      protectedState.active = false;
+      protectedState.headers = {};
+      protectedState.method = (method || "GET").toUpperCase();
+      protectedState.readyState = 0;
+      protectedState.response = null;
+      protectedState.responseHeaders = {};
+      protectedState.responseText = "";
+      protectedState.responseType = getNativeXhrProperty(xhr, "responseType") || "";
+      protectedState.responseURL = "";
+      protectedState.status = 0;
+      protectedState.statusText = "";
+      protectedState.timeout = getNativeXhrProperty(xhr, "timeout") || 0;
+      protectedState.url = resolvedUrl;
+      protectedState.withCredentials = getNativeXhrProperty(xhr, "withCredentials") || false;
 
-  NativeXMLHttpRequest.prototype._syncFromDelegate = function () {
-    // When we delegate to the platform XHR, mirror the platform state back onto the wrapper instance
-    // so page code sees a consistent object regardless of whether the request was bridged or delegated.
-    if (!this._delegate) {
-      return;
-    }
+      if (!shouldRouteToNative(resolvedUrl)) {
+        return nativeOpen(method, url, async === undefined ? true : async, user, password);
+      }
 
-    this.readyState = this._delegate.readyState;
-    this.response = this._delegate.response;
-    this.responseText = this._delegate.responseText;
-    this.responseURL = this._delegate.responseURL;
-    this.status = this._delegate.status;
-    this.statusText = this._delegate.statusText;
-  };
-
-  NativeXMLHttpRequest.prototype.open = function (method, url, async, user, password) {
-    const resolvedUrl = new URL(url, window.location.href).toString();
-    this._method = (method || "GET").toUpperCase();
-    this._url = resolvedUrl;
-    const shouldUseNativeBridge = shouldRouteToNative(resolvedUrl);
-
-    if (!shouldUseNativeBridge || async === false) {
-      // Compatibility-first behavior:
-      // - unmatched URLs always stay on the browser stack
-      // - synchronous XHR also stays on the browser stack, even for matched URLs, because the async
-      //   message bridge cannot safely emulate a true blocking XHR contract
-      this._delegate = new OriginalXMLHttpRequest();
-      this._delegate.responseType = this.responseType;
-      this._delegate.withCredentials = this.withCredentials;
-
-      ["readystatechange", "load", "error", "loadend", "abort", "timeout"].forEach(function (eventName) {
-        this._delegate.addEventListener(eventName, function () {
-          this._syncFromDelegate();
-          this._emit(eventName);
-        }.bind(this));
-      }, this);
-
-      if (shouldUseNativeBridge && async === false) {
-        console.warn(
-          "Approov bridge bypassed protection for synchronous XMLHttpRequest to preserve page compatibility:",
-          resolvedUrl
+      if (async === false) {
+        throw new DOMException(
+          "Synchronous XMLHttpRequest is not supported for protected endpoints.",
+          "NotSupportedError"
         );
       }
 
-      this._delegate.open(method, url, async, user, password);
-      return;
+      protectedState.active = true;
+      changeProtectedReadyState(1);
+    };
+
+    xhr.setRequestHeader = function (name, value) {
+      if (!protectedState.active) {
+        return nativeSetRequestHeader(name, value);
+      }
+
+      protectedState.headers[name] = value;
+    };
+
+    xhr.getResponseHeader = function (name) {
+      if (!protectedState.active) {
+        return nativeGetResponseHeader(name);
+      }
+
+      const key = (name || "").toLowerCase();
+      return Object.prototype.hasOwnProperty.call(protectedState.responseHeaders, key)
+        ? protectedState.responseHeaders[key]
+        : null;
+    };
+
+    xhr.getAllResponseHeaders = function () {
+      if (!protectedState.active) {
+        return nativeGetAllResponseHeaders();
+      }
+
+      return Object.keys(protectedState.responseHeaders)
+        .map(function (name) {
+          return name + ": " + protectedState.responseHeaders[name];
+        })
+        .join("\r\n");
+    };
+
+    if (nativeOverrideMimeType) {
+      xhr.overrideMimeType = function (mimeType) {
+        if (!protectedState.active) {
+          return nativeOverrideMimeType(mimeType);
+        }
+      };
     }
 
-    this._delegate = null;
-    this._headers = {};
-    this.readyState = NativeXMLHttpRequest.OPENED;
-    this._emit("readystatechange");
-  };
+    xhr.abort = function () {
+      if (!protectedState.active) {
+        return nativeAbort();
+      }
 
-  NativeXMLHttpRequest.prototype.setRequestHeader = function (name, value) {
-    if (this._delegate) {
-      this._delegate.setRequestHeader(name, value);
-      return;
-    }
+      if (protectedState.readyState === 0 || protectedState.readyState === 4) {
+        return;
+      }
 
-    this._headers[name] = value;
-  };
+      protectedState.aborted = true;
+      protectedState.readyState = 0;
+      protectedState.response = null;
+      protectedState.responseHeaders = {};
+      protectedState.responseText = "";
+      protectedState.responseURL = "";
+      protectedState.status = 0;
+      protectedState.statusText = "";
+      xhr.dispatchEvent(makeXhrEvent("abort"));
+      xhr.dispatchEvent(makeXhrEvent("loadend"));
+    };
 
-  NativeXMLHttpRequest.prototype.send = function (body) {
-    if (this._delegate) {
-      this._delegate.responseType = this.responseType;
-      this._delegate.withCredentials = this.withCredentials;
-      this._delegate.send(body);
-      return;
-    }
+    xhr.send = function (body) {
+      if (!protectedState.active) {
+        return nativeSend(body);
+      }
 
-    // XHR credentials do not map 1:1 to fetch(), so we derive the closest equivalent request mode
-    // before asking Android to inject cookies.
-    const credentialsMode = this.withCredentials
-      ? "include"
-      : (isSameOriginUrl(this._url) ? "same-origin" : "omit");
+      const credentialsMode = protectedState.withCredentials
+        ? "include"
+        : (isSameOriginUrl(protectedState.url) ? "same-origin" : "omit");
 
-    performNativeRequest(this._url, {
-      body: body,
-      headers: this._headers,
-      method: this._method
-    }, {
-      credentialsMode: credentialsMode
-    }).then(function (response) {
-      return response.text().then(function (responseText) {
-        // Bridged XHR completes as a single native response, so readyState transitions are synthetic.
-        // We emit the major milestones in order so page listeners still observe a familiar sequence.
-        this.readyState = NativeXMLHttpRequest.HEADERS_RECEIVED;
-        this._emit("readystatechange");
-        this.readyState = NativeXMLHttpRequest.LOADING;
-        this._emit("readystatechange");
-        this.readyState = NativeXMLHttpRequest.DONE;
-        this.status = response.status;
-        this.statusText = response.statusText;
-        this.response = responseText;
-        this.responseText = responseText;
-        this.responseURL = response.url || this._url;
-        this._responseHeaders = {};
+      xhr.dispatchEvent(makeXhrEvent("loadstart"));
+      performNativeRequest(protectedState.url, {
+        body: body,
+        headers: protectedState.headers,
+        method: protectedState.method
+      }, {
+        credentialsMode: credentialsMode
+      }).then(function (response) {
+        return response.text().then(function (responseText) {
+          if (protectedState.aborted || !protectedState.active) {
+            return;
+          }
 
-        if (typeof response.headers.forEach === "function") {
-          response.headers.forEach(function (value, key) {
-            this._responseHeaders[key] = value;
-          }, this);
-        } else {
-          this._responseHeaders = response.headers || {};
+          protectedState.status = response.status;
+          protectedState.statusText = response.statusText || "";
+          protectedState.responseURL = response.url || protectedState.url;
+          protectedState.responseHeaders = {};
+
+          if (response.headers && typeof response.headers.forEach === "function") {
+            response.headers.forEach(function (value, key) {
+              protectedState.responseHeaders[key.toLowerCase()] = value;
+            });
+          } else if (response.headers) {
+            Object.keys(response.headers).forEach(function (key) {
+              protectedState.responseHeaders[key.toLowerCase()] = response.headers[key];
+            });
+          }
+
+          changeProtectedReadyState(2);
+          changeProtectedReadyState(3);
+          applyProtectedXhrResponseBody(protectedState, responseText);
+          changeProtectedReadyState(4);
+          xhr.dispatchEvent(makeXhrEvent("load"));
+          xhr.dispatchEvent(makeXhrEvent("loadend"));
+        });
+      }).catch(function (error) {
+        if (protectedState.aborted || !protectedState.active) {
+          return;
         }
 
-        this._emit("readystatechange");
-        this._emit("load");
-        this._emit("loadend");
-      }.bind(this));
-    }.bind(this)).catch(function (error) {
-      // Native bridge failures are surfaced as XHR-style network errors.
-      this.readyState = NativeXMLHttpRequest.DONE;
-      this.status = 0;
-      this.statusText = error.message;
-      this.response = "";
-      this.responseText = "";
-      this._emit("readystatechange");
-      this._emit("error");
-      this._emit("loadend");
-    }.bind(this));
-  };
+        protectedState.status = 0;
+        protectedState.statusText = error && error.message ? error.message : "error";
+        protectedState.response = "";
+        protectedState.responseText = "";
+        changeProtectedReadyState(4);
+        xhr.dispatchEvent(makeXhrEvent("error"));
+        xhr.dispatchEvent(makeXhrEvent("loadend"));
+      });
+    };
 
-  NativeXMLHttpRequest.prototype.abort = function () {
-    // True cancellation is only available when using the delegated platform XHR. For bridged
-    // requests we surface the expected terminal XHR state locally, even though the native request may
-    // already be in flight.
-    if (this._delegate) {
-      this._delegate.abort();
-      return;
+    return xhr;
+  }
+
+  if (OriginalXMLHttpRequest) {
+    ["UNSENT", "OPENED", "HEADERS_RECEIVED", "LOADING", "DONE"].forEach(function (name, index) {
+      const value = typeof OriginalXMLHttpRequest[name] === "number"
+        ? OriginalXMLHttpRequest[name]
+        : index;
+      Object.defineProperty(ApproovXMLHttpRequest, name, {
+        configurable: true,
+        enumerable: true,
+        value: value,
+        writable: false
+      });
+    });
+
+    if (interceptXMLHttpRequests && window.XMLHttpRequest && !window.XMLHttpRequest.__approovWrapped) {
+      ApproovXMLHttpRequest.__approovWrapped = true;
+      window.XMLHttpRequest = ApproovXMLHttpRequest;
+      window.XMLHttpRequest.prototype = OriginalXMLHttpRequest.prototype;
     }
-
-    this.status = 0;
-    this.statusText = "aborted";
-    this.readyState = NativeXMLHttpRequest.DONE;
-    this._emit("readystatechange");
-    this._emit("abort");
-    this._emit("loadend");
-  };
-
-  NativeXMLHttpRequest.prototype.getAllResponseHeaders = function () {
-    if (this._delegate) {
-      return this._delegate.getAllResponseHeaders();
-    }
-
-    return Object.keys(this._responseHeaders).map(function (name) {
-      return name + ": " + this._responseHeaders[name];
-    }, this).join("\r\n");
-  };
-
-  NativeXMLHttpRequest.prototype.getResponseHeader = function (name) {
-    if (this._delegate) {
-      return this._delegate.getResponseHeader(name);
-    }
-
-    const headerName = findHeaderValue(this._responseHeaders, name);
-    return headerName ? this._responseHeaders[headerName] : null;
-  };
-
-  if (!window.XMLHttpRequest || !window.XMLHttpRequest.__approovWrapped) {
-    // Replace the global constructor once per page. We mark the wrapper to avoid double-patching when
-    // the bridge is injected more than once.
-    NativeXMLHttpRequest.__approovWrapped = true;
-    window.XMLHttpRequest = NativeXMLHttpRequest;
   }
 })();

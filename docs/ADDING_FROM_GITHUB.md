@@ -145,9 +145,14 @@ unless you explicitly opt into native replay.
   - add only the page origins that you trust to call the bridge
 - `addNativeRequestRule(...)`
   - add only the protected API hosts and path prefixes
+  - requests are not routed without an explicit matching native request rule or secret-header rule
+  - use the constructor with excluded path prefixes when a broad host rule must leave public or challenge paths on WebView networking
   - do not match HTML page routes unless you have explicitly enabled and validated HTML replay
 - `addSecretHeader(...)`
   - add only headers that must stay out of JavaScript
+- `setInterceptXMLHttpRequests(false)`
+  - optional and enabled by default
+  - use it only when a hosted page requires the untouched WebView XHR surface and protected calls can use `fetch` or forms
 - `setAllowRequestsWithoutApproov(true)`
   - keeps the transport fail-open
   - your backend remains responsible for rejecting missing or invalid tokens if required
@@ -157,6 +162,20 @@ unless you explicitly opt into native replay.
 - `setInterceptMainFrameNavigations(true)`
   - optional and disabled by default
   - only enable if you intentionally want matching top-level page loads to bypass the normal WebView loader
+
+For Cloudflare-fronted sites, keep challenge traffic on the normal WebView stack. Do not add
+`challenges.cloudflare.com` as a native request rule. If you must protect a broad Cloudflare-fronted
+host, exclude challenge paths explicitly:
+
+```java
+import java.util.Arrays;
+
+.addNativeRequestRule(new ApproovWebViewNativeRequestRule(
+    "www.example.com",
+    "/",
+    Arrays.asList("/cdn-cgi")
+))
+```
 
 ## Diagnose In Logcat
 
