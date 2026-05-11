@@ -576,6 +576,7 @@
     const errorPayload = parsedEnvelope.error || {};
     const nativeError = new Error(errorPayload.message || "Native request failed.");
     nativeError.name = errorPayload.type || "NativeRequestError";
+    nativeError.code = errorPayload.code || "native_request_failed";
     pending.reject(nativeError);
   }
 

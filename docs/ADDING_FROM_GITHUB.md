@@ -139,6 +139,26 @@ With the default configuration, this protects matching `fetch(...)` and `XMLHttp
 Matching HTML form submissions and top-level page navigations remain on the normal WebView stack
 unless you explicitly opt into native replay.
 
+## Handling Native Errors In JavaScript
+
+The native layer keeps detailed failure logs in Logcat. JavaScript receives a sanitized error object
+so page UI does not expose certificate pins, stack details, or other native diagnostics.
+
+For protected `fetch(...)` calls, branch on `error.code`:
+
+```javascript
+try {
+  await fetch("https://api.example.com/mobile/v1/orders");
+} catch (error) {
+  if (error.code === "pinning_failed") {
+    showProtectedNetworkError();
+  }
+}
+```
+
+Stable error codes are `pinning_failed`, `network_error`, `request_blocked`,
+`configuration_error`, and `request_error`.
+
 ## How To Configure It Correctly
 
 - `addAllowedOriginRule(...)`

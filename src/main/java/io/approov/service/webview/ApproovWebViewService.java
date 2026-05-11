@@ -779,13 +779,7 @@ public final class ApproovWebViewService {
     }
 
     private JSONObject buildErrorPayload(Exception exception) throws JSONException {
-        JSONObject errorPayload = new JSONObject();
-        errorPayload.put(
-            "message",
-            exception.getMessage() == null ? exception.getClass().getSimpleName() : exception.getMessage()
-        );
-        errorPayload.put("type", exception.getClass().getSimpleName());
-        return errorPayload;
+        return ApproovWebViewBridgeError.toJson(exception);
     }
 
     private JSONObject flattenHeaders(Headers headers) throws JSONException {

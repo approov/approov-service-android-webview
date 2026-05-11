@@ -83,6 +83,22 @@ With the default configuration, the package protects matching `fetch(...)` and `
 traffic only. HTML form replay and top-level navigation replay are available as explicit opt-ins
 because they cannot preserve browser behavior for arbitrary sites.
 
+## Page-Facing Errors
+
+Native failures are logged with full detail in Logcat, but JavaScript receives sanitized error
+objects. Protected `fetch(...)` promises reject with `error.name` and `error.code`; protected XHR
+requests surface the same message through normal XHR error events.
+
+Stable page-facing error codes are:
+
+- `pinning_failed`
+- `network_error`
+- `request_blocked`
+- `configuration_error`
+- `request_error`
+
+Use `error.code` for page behavior and keep detailed diagnostics in native logs.
+
 ## Important Constraints
 
 - This is not a plain remote package URL. Consumers cannot use `implementation("https://github.com/...")`.

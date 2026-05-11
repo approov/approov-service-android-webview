@@ -39,6 +39,13 @@ public class ApproovWebViewBridgeAssetTest {
         assertTrue(source.contains("pathname === normalizedPathPrefix || pathname.indexOf(normalizedPathPrefix + \"/\") === 0"));
     }
 
+    @Test
+    public void bridgePropagatesNativeErrorCode() throws IOException {
+        String source = readBridgeSource();
+
+        assertTrue(source.contains("nativeError.code = errorPayload.code || \"native_request_failed\";"));
+    }
+
     private String readBridgeSource() throws IOException {
         return new String(
             Files.readAllBytes(Paths.get("src/main/assets/approov-webview-bridge.js")),
