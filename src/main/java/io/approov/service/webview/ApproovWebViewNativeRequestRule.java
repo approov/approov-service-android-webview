@@ -17,11 +17,22 @@ public final class ApproovWebViewNativeRequestRule {
     private final String pathPrefix;
     private final List<String> excludedPathPrefixes;
 
-    public ApproovWebViewNativeRequestRule(String host, String pathPrefix) {
-        this(host, pathPrefix, Collections.emptyList());
+    /**
+     * Starts a fluent request-rule builder for {@code host}. Use the builder so include and exclude
+     * intent stays explicit in Java call sites:
+     *
+     * <pre>
+     * ApproovWebViewNativeRequestRule.builder("www.example.com")
+     *     .includePathPrefix("/")
+     *     .excludePathPrefix("/cdn-cgi")
+     *     .build()
+     * </pre>
+     */
+    public static Builder builder(String host) {
+        return new Builder(host);
     }
 
-    public ApproovWebViewNativeRequestRule(
+    private ApproovWebViewNativeRequestRule(
         String host,
         String pathPrefix,
         List<String> excludedPathPrefixes
@@ -114,5 +125,65 @@ public final class ApproovWebViewNativeRequestRule {
         }
 
         return path.equals(pathPrefix) || path.startsWith(pathPrefix + "/");
+    }
+
+    public static final class Builder {
+        private final String host;
+        private String pathPrefix = "/";
+        private final List<String> excludedPathPrefixes = new ArrayList<>();
+
+        private Builder(String host) {
+            this.host = requireNonBlank(host, "host");
+        }
+
+        /**
+         * Includes requests whose path matches this prefix. Defaults to {@code /}, which includes
+         * every path on the configured host.
+         */
+        public Builder includePathPrefix(String pathPrefix) {
+            this.pathPrefix = pathPrefix;
+            return this;
+        }
+
+        /**
+         * Excludes requests whose path matches this prefix from native replay.
+         */
+        public Builder excludePathPrefix(String excludedPathPrefix) {
+            if (excludedPathPrefix != null && !excludedPathPrefix.isBlank()) {
+                excludedPathPrefixes.add(excludedPathPrefix);
+            }
+
+            return this;
+        }
+
+        /**
+         * Excludes requests whose path matches any of these prefixes from native replay.
+         */
+        public Builder excludePathPrefixes(List<String> excludedPathPrefixes) {
+            if (excludedPathPrefixes != null) {
+                for (String excludedPathPrefix : excludedPathPrefixes) {
+                    excludePathPrefix(excludedPathPrefix);
+                }
+            }
+
+            return this;
+        }
+
+        /**
+         * Excludes requests whose path matches any of these prefixes from native replay.
+         */
+        public Builder excludePathPrefixes(String... excludedPathPrefixes) {
+            if (excludedPathPrefixes != null) {
+                for (String excludedPathPrefix : excludedPathPrefixes) {
+                    excludePathPrefix(excludedPathPrefix);
+                }
+            }
+
+            return this;
+        }
+
+        public ApproovWebViewNativeRequestRule build() {
+            return new ApproovWebViewNativeRequestRule(host, pathPrefix, excludedPathPrefixes);
+        }
     }
 }

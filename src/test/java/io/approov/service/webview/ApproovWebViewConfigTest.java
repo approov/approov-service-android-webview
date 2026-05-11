@@ -13,7 +13,9 @@ public class ApproovWebViewConfigTest {
     @Test
     public void nativeRequestRuleMatchesConfiguredHostAndPathPrefix() {
         ApproovWebViewNativeRequestRule nativeRequestRule =
-            new ApproovWebViewNativeRequestRule("API.EXAMPLE.COM", "v1/");
+            ApproovWebViewNativeRequestRule.builder("API.EXAMPLE.COM")
+                .includePathPrefix("v1/")
+                .build();
 
         assertTrue(nativeRequestRule.matches(URI.create("https://api.example.com/v1/orders")));
         assertTrue(nativeRequestRule.matches(URI.create("https://api.example.com/v1")));
@@ -27,11 +29,10 @@ public class ApproovWebViewConfigTest {
     @Test
     public void nativeRequestRuleSupportsExcludedPathPrefixes() {
         ApproovWebViewNativeRequestRule nativeRequestRule =
-            new ApproovWebViewNativeRequestRule(
-                "www.example.com",
-                "/",
-                Arrays.asList("/cdn-cgi/", "assets/static", "", "   ", null)
-            );
+            ApproovWebViewNativeRequestRule.builder("www.example.com")
+                .includePathPrefix("/")
+                .excludePathPrefixes(Arrays.asList("/cdn-cgi/", "assets/static", "", "   ", null))
+                .build();
 
         assertTrue(nativeRequestRule.matches(URI.create("https://www.example.com/checkout")));
         assertFalse(nativeRequestRule.matches(URI.create("https://www.example.com/cdn-cgi/challenge-platform/h/b/orchestrate/jsch/v1")));
@@ -41,9 +42,26 @@ public class ApproovWebViewConfigTest {
     }
 
     @Test
+    public void nativeRequestRuleBuilderMakesIncludedAndExcludedPrefixesExplicit() {
+        ApproovWebViewNativeRequestRule nativeRequestRule =
+            ApproovWebViewNativeRequestRule.builder("www.example.com")
+                .includePathPrefix("/")
+                .excludePathPrefix("/cdn-cgi/")
+                .excludePathPrefixes("assets/static", "", "   ", null)
+                .build();
+
+        assertTrue(nativeRequestRule.matches(URI.create("https://www.example.com/checkout")));
+        assertFalse(nativeRequestRule.matches(URI.create("https://www.example.com/cdn-cgi/challenge-platform/h/b/orchestrate/jsch/v1")));
+        assertFalse(nativeRequestRule.matches(URI.create("https://www.example.com/assets/static/app.js")));
+        assertEquals(Arrays.asList("/cdn-cgi", "/assets/static"), nativeRequestRule.getExcludedPathPrefixes());
+    }
+
+    @Test
     public void rootNativeRequestRuleMatchesEntireHost() {
         ApproovWebViewNativeRequestRule nativeRequestRule =
-            new ApproovWebViewNativeRequestRule("api.example.com", "");
+            ApproovWebViewNativeRequestRule.builder("api.example.com")
+                .includePathPrefix("")
+                .build();
 
         assertTrue(nativeRequestRule.matches(URI.create("https://api.example.com/")));
         assertTrue(nativeRequestRule.matches(URI.create("https://api.example.com/v1/orders")));
@@ -67,7 +85,11 @@ public class ApproovWebViewConfigTest {
             .setServiceLoggingEnabled(true)
             .setOkHttpLogLevel(ApproovWebViewLogLevel.HEADERS)
             .addRedactedHeaderName("x-custom-secret")
-            .addNativeRequestRule(new ApproovWebViewNativeRequestRule("api.example.com", "/v1/"))
+            .addNativeRequestRule(
+                ApproovWebViewNativeRequestRule.builder("api.example.com")
+                    .includePathPrefix("/v1/")
+                    .build()
+            )
             .build();
 
         assertEquals(1, config.getNativeRequestRules().size());

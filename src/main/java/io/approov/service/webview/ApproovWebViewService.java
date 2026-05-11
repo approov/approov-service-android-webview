@@ -534,7 +534,7 @@ public final class ApproovWebViewService {
         URI requestUri
     ) {
         for (ApproovWebViewSecretHeader secretHeader : config.getSecretHeaders()) {
-            if (secretHeader.matches(requestUri) && !hasHeader(requestHeaders, secretHeader.getHeaderName())) {
+            if (secretHeader.matches(requestUri)) {
                 requestBuilder.header(secretHeader.getHeaderName(), secretHeader.getHeaderValue());
             }
         }
@@ -844,7 +844,9 @@ public final class ApproovWebViewService {
             addNativeRequestRule(
                 nativeRequestRulesJson,
                 serializedRules,
-                new ApproovWebViewNativeRequestRule(secretHeader.getHost(), secretHeader.getPathPrefix())
+                ApproovWebViewNativeRequestRule.builder(secretHeader.getHost())
+                    .includePathPrefix(secretHeader.getPathPrefix())
+                    .build()
             );
         }
 

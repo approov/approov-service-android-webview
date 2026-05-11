@@ -20,10 +20,11 @@ public final class MyApplication extends Application {
             .setServiceLoggingEnabled(BuildConfig.DEBUG)
             .setOkHttpLogLevel(BuildConfig.DEBUG ? ApproovWebViewLogLevel.HEADERS : ApproovWebViewLogLevel.NONE)
             .addAllowedOriginRule("https://your-web-app.example.com")
-            .addNativeRequestRule(new ApproovWebViewNativeRequestRule(
-                "api.example.com",
-                "/protected/"
-            ))
+            .addNativeRequestRule(
+                ApproovWebViewNativeRequestRule.builder("api.example.com")
+                    .includePathPrefix("/protected/")
+                    .build()
+            )
             .addSecretHeader(new ApproovWebViewSecretHeader(
                 "api.example.com",
                 "/protected/",

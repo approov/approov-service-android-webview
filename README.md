@@ -55,10 +55,11 @@ ApproovWebViewConfig config = new ApproovWebViewConfig.Builder(BuildConfig.APPRO
     .setServiceLoggingEnabled(BuildConfig.DEBUG)
     .setOkHttpLogLevel(BuildConfig.DEBUG ? ApproovWebViewLogLevel.HEADERS : ApproovWebViewLogLevel.NONE)
     .addAllowedOriginRule("https://your-web-app.example.com")
-    .addNativeRequestRule(new ApproovWebViewNativeRequestRule(
-        "api.example.com",
-        "/protected/"
-    ))
+    .addNativeRequestRule(
+        ApproovWebViewNativeRequestRule.builder("api.example.com")
+            .includePathPrefix("/protected/")
+            .build()
+    )
     .addSecretHeader(new ApproovWebViewSecretHeader(
         "api.example.com",
         "/protected/",
@@ -83,6 +84,108 @@ With the default configuration, the package protects matching `fetch(...)` and `
 traffic only. HTML form replay and top-level navigation replay are available as explicit opt-ins
 because they cannot preserve browser behavior for arbitrary sites.
 
+## Scope Protection Narrowly
+
+> [!IMPORTANT]
+> Do not apply this helper to every `WebView` in an app. Configure only the `WebView` instances that
+> load trusted pages whose API calls need Approov protection.
+
+There are three separate scopes:
+
+| Scope | Configure With | What It Controls |
+| --- | --- | --- |
+| WebView instance | `configureWebView(webView)` | Which app WebViews receive the bridge |
+| Page origins | `addAllowedOriginRule(...)` | Which loaded pages are allowed to call the bridge |
+| Protected endpoints | `addNativeRequestRule(...)` and `addSecretHeader(...)` | Which outbound page requests are replayed through native OkHttp and Approov |
+
+```java
+ApproovWebViewService service = ApproovWebViewService.getInstance();
+
+// Protected funnel WebView.
+service.configureWebView(funnelWebView);
+funnelWebView.setWebViewClient(service.buildWebViewClient(existingClient));
+
+// Regular content, help, identity, or third-party WebViews should keep normal WebView networking.
+regularWebView.setWebViewClient(existingClient);
+```
+
+### Add Protected Domains And Endpoints
+
+Create `ApproovWebViewNativeRequestRule` instances with the builder. Pass the host to
+`builder(...)`, then use `includePathPrefix(...)` for the endpoint path to protect. Only matching
+`fetch(...)` and XHR requests are routed natively; everything else stays on normal WebView
+networking.
+
+> [!TIP]
+> Prefer API-only hosts or API-only path prefixes. Do not protect a whole website host unless there
+> is no narrower stable endpoint pattern.
+
+```java
+.addNativeRequestRule(
+    ApproovWebViewNativeRequestRule.builder("api.example.com")
+        .includePathPrefix("/mobile/")
+        .build()
+)
+```
+
+With that rule:
+
+| Request URL | Routed Through Approov? | Reason |
+| --- | --- | --- |
+| `https://api.example.com/mobile/orders` | Yes | Host and `/mobile` path prefix match |
+| `https://api.example.com/public/help` | No | Path does not match `/mobile` |
+| `https://www.example.com/mobile/orders` | No | Host does not match `api.example.com` |
+
+If the protected API is on the same host as the website, match only the API path and leave the rest
+of the website alone:
+
+```java
+.addNativeRequestRule(
+    ApproovWebViewNativeRequestRule.builder("www.example.com")
+        .includePathPrefix("/api/mobile/")
+        .build()
+)
+```
+
+With that rule:
+
+| Request URL | Routed Through Approov? | Reason |
+| --- | --- | --- |
+| `https://www.example.com/api/mobile/orders` | Yes | Host and `/api/mobile` path prefix match |
+| `https://www.example.com/booking/search` | No | Website page path is outside `/api/mobile` |
+| `https://www.example.com/cdn-cgi/challenge-platform/...` | No | Cloudflare path is outside `/api/mobile` |
+
+### Keep Other Domains And Paths Unprotected
+
+To keep a domain or endpoint on normal WebView networking, do not add a matching native request
+rule for it. If a broader rule is unavoidable, use excluded path prefixes for public, identity,
+analytics, or browser verification paths.
+
+> [!WARNING]
+> A rule with host `www.example.com` and path `/` matches every path on that host. Use this only as a
+> fallback after validating that the matched requests can safely bypass normal WebView networking.
+
+For Cloudflare-fronted sites, challenge traffic must stay on the WebView network stack:
+
+```java
+.addNativeRequestRule(
+    ApproovWebViewNativeRequestRule.builder("www.example.com")
+        .includePathPrefix("/")          // include all paths on this host
+        .excludePathPrefix("/cdn-cgi")   // then exclude Cloudflare challenge paths
+        .build()
+)
+```
+
+That fallback rule routes matching `fetch(...)` and XHR calls for `www.example.com`, except paths
+under `/cdn-cgi`. It is safer than a plain whole-host rule, but a specific API path is still the
+preferred configuration. If Cloudflare Turnstile or another browser verification flow depends on
+the untouched WebView XHR implementation, disable XHR interception and use `fetch(...)` for protected
+calls:
+
+```java
+.setInterceptXMLHttpRequests(false)
+```
+
 ## Page-Facing Errors
 
 Native failures are logged with full detail in Logcat, but JavaScript receives sanitized error
@@ -105,24 +208,14 @@ Use `error.code` for page behavior and keep detailed diagnostics in native logs.
 - Consumers must include the repo source in their Gradle build.
 - Keep `addNativeRequestRule(...)` narrow. Only protect the API hosts and paths that actually need Approov.
 - Requests are routed only when they match an explicit native request rule or secret-header rule.
+- Matching `addSecretHeader(...)` values are set in native code and override any same-name page header.
 - `fetch` and XHR are the safe default transport hooks. Arbitrary browser-managed subresources such as every `<script>` or `<img>` request are not transparently rewritten by this library.
+- Configure only the `WebView` instances that need protected API calls. Do not attach the bridge to unrelated app WebViews.
 - Do not let `addNativeRequestRule(...)` or `addSecretHeader(...)` match HTML page routes unless you have explicitly enabled and validated the relevant HTML replay option.
 - For Cloudflare-fronted sites, leave challenge traffic on WebView networking. If you must protect a broad host path, use excluded path prefixes such as `/cdn-cgi`, and do not add `challenges.cloudflare.com` as a native request rule.
 - `setInterceptXMLHttpRequests(false)` leaves the WebView's native XHR constructor untouched when a site depends on browser-native XHR behavior and can use `fetch` or forms for protected calls.
 - `setProtectSameFrameHtmlFormSubmissions(true)` Use it only for tightly controlled form endpoints that have been validated end to end.
 - `setInterceptMainFrameNavigations(true)` Use it only when you intentionally want matching top-level page loads to bypass the normal WebView network stack.
-
-Example broad host rule with Cloudflare challenge paths excluded:
-
-```java
-import java.util.Arrays;
-
-.addNativeRequestRule(new ApproovWebViewNativeRequestRule(
-    "www.example.com",
-    "/",
-    Arrays.asList("/cdn-cgi")
-))
-```
 
 ## Build
 
