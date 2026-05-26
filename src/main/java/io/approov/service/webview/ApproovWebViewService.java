@@ -43,6 +43,7 @@ import java.util.WeakHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import io.approov.service.okhttp.ApproovService;
@@ -443,6 +444,16 @@ public final class ApproovWebViewService {
                 storeResponseCookies(response);
                 return response;
             });
+
+        if (config.getConnectTimeoutMs() > 0) {
+            okHttpClientBuilder.connectTimeout(config.getConnectTimeoutMs(), TimeUnit.MILLISECONDS);
+        }
+        if (config.getReadTimeoutMs() > 0) {
+            okHttpClientBuilder.readTimeout(config.getReadTimeoutMs(), TimeUnit.MILLISECONDS);
+        }
+        if (config.getWriteTimeoutMs() > 0) {
+            okHttpClientBuilder.writeTimeout(config.getWriteTimeoutMs(), TimeUnit.MILLISECONDS);
+        }
 
         configureOkHttpLogging(okHttpClientBuilder);
         return okHttpClientBuilder;

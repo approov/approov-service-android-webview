@@ -2,12 +2,14 @@ package io.approov.service.webview;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
 
 import java.net.URI;
 import java.util.Arrays;
+import java.util.concurrent.TimeUnit;
 
 public class ApproovWebViewConfigTest {
     @Test
@@ -102,6 +104,47 @@ public class ApproovWebViewConfigTest {
         assertTrue(config.interceptsXMLHttpRequests());
         assertFalse(config.interceptsMainFrameNavigations());
         assertFalse(config.protectsSameFrameHtmlFormSubmissions());
+    }
+
+    @Test
+    public void configRetainsNativeClientTimeouts() {
+        ApproovWebViewConfig config = new ApproovWebViewConfig.Builder("approov-config")
+            .addAllowedOriginRule("https://app.example.com")
+            .setConnectTimeout(15, TimeUnit.SECONDS)
+            .setReadTimeout(60, TimeUnit.SECONDS)
+            .setWriteTimeout(2, TimeUnit.MINUTES)
+            .build();
+
+        assertEquals(15000, config.getConnectTimeoutMs());
+        assertEquals(60000, config.getReadTimeoutMs());
+        assertEquals(120000, config.getWriteTimeoutMs());
+    }
+
+    @Test
+    public void defaultNativeClientTimeoutsUseOkHttpDefaults() {
+        ApproovWebViewConfig config = new ApproovWebViewConfig.Builder("approov-config")
+            .addAllowedOriginRule("https://app.example.com")
+            .build();
+
+        assertEquals(0, config.getConnectTimeoutMs());
+        assertEquals(0, config.getReadTimeoutMs());
+        assertEquals(0, config.getWriteTimeoutMs());
+    }
+
+    @Test
+    public void timeoutBuilderRejectsInvalidDurations() {
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> new ApproovWebViewConfig.Builder("approov-config").setReadTimeout(-1, TimeUnit.SECONDS)
+        );
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> new ApproovWebViewConfig.Builder("approov-config").setReadTimeout(1, null)
+        );
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> new ApproovWebViewConfig.Builder("approov-config").setReadTimeout(1, TimeUnit.NANOSECONDS)
+        );
     }
 
     @Test

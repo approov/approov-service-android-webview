@@ -5,6 +5,7 @@ import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Immutable configuration for the reusable Approov WebView bridge.
@@ -30,6 +31,9 @@ public final class ApproovWebViewConfig {
     private final boolean interceptMainFrameNavigations;
     private final boolean protectSameFrameHtmlFormSubmissions;
     private final ApproovWebViewLogLevel okHttpLogLevel;
+    private final long connectTimeoutMs;
+    private final long readTimeoutMs;
+    private final long writeTimeoutMs;
     private final Set<String> redactedHeaderNames;
     private final Set<String> allowedOriginRules;
     private final List<ApproovWebViewNativeRequestRule> nativeRequestRules;
@@ -45,6 +49,9 @@ public final class ApproovWebViewConfig {
         interceptMainFrameNavigations = builder.interceptMainFrameNavigations;
         protectSameFrameHtmlFormSubmissions = builder.protectSameFrameHtmlFormSubmissions;
         okHttpLogLevel = builder.okHttpLogLevel;
+        connectTimeoutMs = builder.connectTimeoutMs;
+        readTimeoutMs = builder.readTimeoutMs;
+        writeTimeoutMs = builder.writeTimeoutMs;
         redactedHeaderNames = Collections.unmodifiableSet(new LinkedHashSet<>(builder.redactedHeaderNames));
         allowedOriginRules = Collections.unmodifiableSet(new LinkedHashSet<>(builder.allowedOriginRules));
         nativeRequestRules = Collections.unmodifiableList(new ArrayList<>(builder.nativeRequestRules));
@@ -87,6 +94,27 @@ public final class ApproovWebViewConfig {
         return okHttpLogLevel;
     }
 
+    /**
+     * Returns the OkHttp connect timeout in milliseconds. Zero means use the OkHttp default.
+     */
+    public long getConnectTimeoutMs() {
+        return connectTimeoutMs;
+    }
+
+    /**
+     * Returns the OkHttp read timeout in milliseconds. Zero means use the OkHttp default.
+     */
+    public long getReadTimeoutMs() {
+        return readTimeoutMs;
+    }
+
+    /**
+     * Returns the OkHttp write timeout in milliseconds. Zero means use the OkHttp default.
+     */
+    public long getWriteTimeoutMs() {
+        return writeTimeoutMs;
+    }
+
     public Set<String> getRedactedHeaderNames() {
         return redactedHeaderNames;
     }
@@ -113,6 +141,9 @@ public final class ApproovWebViewConfig {
         private boolean interceptMainFrameNavigations = false;
         private boolean protectSameFrameHtmlFormSubmissions = false;
         private ApproovWebViewLogLevel okHttpLogLevel = ApproovWebViewLogLevel.NONE;
+        private long connectTimeoutMs = 0;
+        private long readTimeoutMs = 0;
+        private long writeTimeoutMs = 0;
         private final Set<String> redactedHeaderNames = new LinkedHashSet<>();
         private final Set<String> allowedOriginRules = new LinkedHashSet<>();
         private final List<ApproovWebViewNativeRequestRule> nativeRequestRules = new ArrayList<>();
@@ -203,6 +234,49 @@ public final class ApproovWebViewConfig {
         public Builder setOkHttpLogLevel(ApproovWebViewLogLevel okHttpLogLevel) {
             this.okHttpLogLevel = okHttpLogLevel == null ? ApproovWebViewLogLevel.NONE : okHttpLogLevel;
             return this;
+        }
+
+        /**
+         * Sets the OkHttp connect timeout. Zero means use the OkHttp default (10 seconds).
+         */
+        public Builder setConnectTimeout(long duration, TimeUnit unit) {
+            this.connectTimeoutMs = timeoutMillis("connectTimeout", duration, unit);
+            return this;
+        }
+
+        /**
+         * Sets the OkHttp read timeout. Zero means use the OkHttp default (10 seconds).
+         */
+        public Builder setReadTimeout(long duration, TimeUnit unit) {
+            this.readTimeoutMs = timeoutMillis("readTimeout", duration, unit);
+            return this;
+        }
+
+        /**
+         * Sets the OkHttp write timeout. Zero means use the OkHttp default (10 seconds).
+         */
+        public Builder setWriteTimeout(long duration, TimeUnit unit) {
+            this.writeTimeoutMs = timeoutMillis("writeTimeout", duration, unit);
+            return this;
+        }
+
+        private static long timeoutMillis(String timeoutName, long duration, TimeUnit unit) {
+            if (unit == null) {
+                throw new IllegalArgumentException(timeoutName + " unit must not be null");
+            }
+            if (duration < 0) {
+                throw new IllegalArgumentException(timeoutName + " must not be negative");
+            }
+
+            long timeoutMs = unit.toMillis(duration);
+            if (duration > 0 && timeoutMs == 0) {
+                throw new IllegalArgumentException(timeoutName + " must be at least 1 ms");
+            }
+            if (timeoutMs > Integer.MAX_VALUE) {
+                throw new IllegalArgumentException(timeoutName + " must be <= " + Integer.MAX_VALUE + " ms");
+            }
+
+            return timeoutMs;
         }
 
         /**
