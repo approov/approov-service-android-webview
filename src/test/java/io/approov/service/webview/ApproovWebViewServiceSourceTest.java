@@ -19,6 +19,9 @@ public class ApproovWebViewServiceSourceTest {
 
         assertTrue(source.contains("if (!matchesNativeRequestRule(requestUri))"));
         assertTrue(source.contains("bridgeConfig.put(\"interceptXMLHttpRequests\", config.interceptsXMLHttpRequests())"));
+        assertTrue(source.contains("connectTimeout(config.getConnectTimeoutMs(), TimeUnit.MILLISECONDS)"));
+        assertTrue(source.contains("readTimeout(config.getReadTimeoutMs(), TimeUnit.MILLISECONDS)"));
+        assertTrue(source.contains("writeTimeout(config.getWriteTimeoutMs(), TimeUnit.MILLISECONDS)"));
         assertTrue(source.contains("\"excludedPathPrefixes\","));
         assertTrue(source.contains("return false;"));
     }

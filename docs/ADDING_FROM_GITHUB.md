@@ -91,6 +91,8 @@ package com.example.app;
 
 import android.app.Application;
 
+import java.util.concurrent.TimeUnit;
+
 import io.approov.service.webview.ApproovWebViewConfig;
 import io.approov.service.webview.ApproovWebViewLogLevel;
 import io.approov.service.webview.ApproovWebViewNativeRequestRule;
@@ -108,6 +110,7 @@ public final class MyApplication extends Application {
             .setAllowRequestsWithoutApproov(true)
             .setServiceLoggingEnabled(BuildConfig.DEBUG)
             .setOkHttpLogLevel(BuildConfig.DEBUG ? ApproovWebViewLogLevel.HEADERS : ApproovWebViewLogLevel.NONE)
+            .setReadTimeout(60, TimeUnit.SECONDS)
             .addAllowedOriginRule("https://your-web-app.example.com")
             .addNativeRequestRule(
                 ApproovWebViewNativeRequestRule.builder("api.example.com")
@@ -139,6 +142,8 @@ webView.loadUrl("https://your-web-app.example.com");
 With the default configuration, this protects matching `fetch(...)` and `XMLHttpRequest` traffic.
 Matching HTML form submissions and top-level page navigations remain on the normal WebView stack
 unless you explicitly opt into native replay.
+The native OkHttp client keeps OkHttp's default connect, read, and write timeouts unless you call
+`setConnectTimeout(...)`, `setReadTimeout(...)`, or `setWriteTimeout(...)`.
 
 Only call `configureWebView(...)` for WebViews that load trusted protected funnels. Other WebViews
 in the app should keep normal WebView networking:

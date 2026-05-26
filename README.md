@@ -42,6 +42,8 @@ Use the exact snippets in [docs/ADDING_FROM_GITHUB.md]
 Create the config once in your `Application`:
 
 ```java
+import java.util.concurrent.TimeUnit;
+
 import io.approov.service.webview.ApproovWebViewConfig;
 import io.approov.service.webview.ApproovWebViewLogLevel;
 import io.approov.service.webview.ApproovWebViewNativeRequestRule;
@@ -54,6 +56,7 @@ ApproovWebViewConfig config = new ApproovWebViewConfig.Builder(BuildConfig.APPRO
     .setAllowRequestsWithoutApproov(true)
     .setServiceLoggingEnabled(BuildConfig.DEBUG)
     .setOkHttpLogLevel(BuildConfig.DEBUG ? ApproovWebViewLogLevel.HEADERS : ApproovWebViewLogLevel.NONE)
+    .setReadTimeout(60, TimeUnit.SECONDS)
     .addAllowedOriginRule("https://your-web-app.example.com")
     .addNativeRequestRule(
         ApproovWebViewNativeRequestRule.builder("api.example.com")
@@ -83,6 +86,8 @@ webView.loadUrl("https://your-web-app.example.com");
 With the default configuration, the package protects matching `fetch(...)` and `XMLHttpRequest`
 traffic only. HTML form replay and top-level navigation replay are available as explicit opt-ins
 because they cannot preserve browser behavior for arbitrary sites.
+The native OkHttp client keeps OkHttp's default connect, read, and write timeouts unless you call
+`setConnectTimeout(...)`, `setReadTimeout(...)`, or `setWriteTimeout(...)`.
 
 ## Scope Protection Narrowly
 

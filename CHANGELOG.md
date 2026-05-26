@@ -4,6 +4,10 @@ All notable changes to this package are documented in this file.
 
 The format is based on Keep a Changelog and this package follows Semantic Versioning.
 
+## [Unreleased]
+### Added
+  * Configurable OkHttp connect, read, and write timeouts for protected WebView requests routed through native replay
+
 ## [1.0] - 2026-05-11
 ### Added
   * Initial Android WebView service layer package for source-based Gradle consumption
