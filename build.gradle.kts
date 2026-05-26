@@ -3,7 +3,7 @@ plugins {
 }
 
 group = "io.approov"
-version = "1.0"
+version = "1.1"
 
 android {
     namespace = "io.approov.service.webview"
