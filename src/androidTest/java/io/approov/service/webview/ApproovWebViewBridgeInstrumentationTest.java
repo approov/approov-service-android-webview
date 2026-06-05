@@ -2,6 +2,7 @@ package io.approov.service.webview;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 import android.content.Context;
 import android.webkit.WebView;
@@ -188,6 +189,7 @@ public class ApproovWebViewBridgeInstrumentationTest {
             Thread.sleep(50);
         } while (System.currentTimeMillis() < deadline);
 
+        fail("Timed out waiting for " + expression + " to change from pending; last value was " + value);
         return value;
     }
 
