@@ -73,6 +73,66 @@ public class ApproovWebViewBridgeInstrumentationTest {
         }
     }
 
+    @Test
+    public void bridgeBuildsFetchResponseForNoContentNativeReply() throws Exception {
+        WebView webView = createLoadedWebView();
+        try {
+            String result = evaluate(
+                webView,
+                "(function () {"
+                    + "window.__approovNoContentResult = 'pending';"
+                    + "window.ApproovNativeBridge = {"
+                    + "postMessage: function (message) {"
+                    + "var request = JSON.parse(message);"
+                    + "window.ApproovNativeBridge.onmessage({"
+                    + "data: JSON.stringify({"
+                    + "requestId: request.requestId,"
+                    + "status: 'success',"
+                    + "payload: {"
+                    + "ok: true,"
+                    + "redirected: false,"
+                    + "status: 204,"
+                    + "statusText: 'No Content',"
+                    + "url: request.url,"
+                    + "headers: {},"
+                    + "bodyText: ''"
+                    + "}"
+                    + "})"
+                    + "});"
+                    + "}"
+                    + "};"
+                    + "window.__approovWebViewConfig = {"
+                    + "nativeRequestRules: [{ host: 'api.example.com', pathPrefix: '/' }]"
+                    + "};"
+                    + readBridgeScript()
+                    + "fetch('https://api.example.com/no-content')"
+                    + ".then(function (response) {"
+                    + "return response.text().then(function (text) {"
+                    + "window.__approovNoContentResult = ["
+                    + "response.status,"
+                    + "response.statusText,"
+                    + "text,"
+                    + "response.url"
+                    + "].join('|');"
+                    + "});"
+                    + "})"
+                    + ".catch(function (error) {"
+                    + "window.__approovNoContentResult = 'error|' + error.message;"
+                    + "});"
+                    + "return 'started';"
+                    + "})();"
+            );
+
+            assertEquals("\"started\"", result);
+            assertEquals(
+                "\"204|No Content||https://api.example.com/no-content\"",
+                waitForJsValue(webView, "window.__approovNoContentResult")
+            );
+        } finally {
+            destroyWebView(webView);
+        }
+    }
+
     private WebView createLoadedWebView() throws Exception {
         CountDownLatch loadedLatch = new CountDownLatch(1);
         AtomicReference<WebView> webViewRef = new AtomicReference<>();
@@ -114,6 +174,21 @@ public class ApproovWebViewBridgeInstrumentationTest {
 
         assertTrue(evaluatedLatch.await(10, TimeUnit.SECONDS));
         return resultRef.get();
+    }
+
+    private String waitForJsValue(WebView webView, String expression) throws Exception {
+        long deadline = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(10);
+        String value;
+        do {
+            value = evaluate(webView, expression);
+            if (!"\"pending\"".equals(value)) {
+                return value;
+            }
+
+            Thread.sleep(50);
+        } while (System.currentTimeMillis() < deadline);
+
+        return value;
     }
 
     private void destroyWebView(WebView webView) {
