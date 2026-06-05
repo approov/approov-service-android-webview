@@ -4,6 +4,11 @@ All notable changes to this package are documented in this file.
 
 The format is based on Keep a Changelog and this package follows Semantic Versioning.
 
+## [1.1.1] - 2026-06-05
+### Fixed
+  * Native-backed `fetch(...)` responses now construct Fetch `Response` objects with a null body for
+    204, 205, and 304 statuses, preventing WebView funnels from stalling on no-content responses
+
 ## [1.1] - 2026-05-26
 ### Added
   * Configurable OkHttp connect, read, and write timeouts for protected WebView requests routed through native replay

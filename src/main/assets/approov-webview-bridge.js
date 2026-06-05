@@ -490,7 +490,10 @@
     // standard Response and then patch in fields such as url/redirected that are not directly
     // configurable through the constructor.
     if (typeof Response === "function") {
-      const response = new Response(result.bodyText || "", {
+      const responseBody = result.status === 204 || result.status === 205 || result.status === 304
+        ? null
+        : (result.bodyText || "");
+      const response = new Response(responseBody, {
         headers: result.headers || {},
         status: result.status,
         statusText: result.statusText || ""
