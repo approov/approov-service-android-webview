@@ -168,4 +168,23 @@ public class ApproovWebViewConfigTest {
         assertTrue(config.interceptsMainFrameNavigations());
         assertTrue(config.protectsSameFrameHtmlFormSubmissions());
     }
+
+    @Test
+    public void requestsWithoutApproovAreFailClosedByDefault() {
+        ApproovWebViewConfig config = new ApproovWebViewConfig.Builder("approov-config")
+            .addAllowedOriginRule("https://app.example.com")
+            .build();
+
+        assertFalse(config.allowsRequestsWithoutApproov());
+    }
+
+    @Test
+    public void requestsWithoutApproovCanBeOptedIn() {
+        ApproovWebViewConfig config = new ApproovWebViewConfig.Builder("approov-config")
+            .addAllowedOriginRule("https://app.example.com")
+            .setAllowRequestsWithoutApproov(true)
+            .build();
+
+        assertTrue(config.allowsRequestsWithoutApproov());
+    }
 }

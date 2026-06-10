@@ -135,7 +135,7 @@ public final class ApproovWebViewConfig {
         private final String approovConfig;
         private String approovDevKey = "";
         private String approovTokenHeaderName = "approov-token";
-        private boolean allowRequestsWithoutApproov = true;
+        private boolean allowRequestsWithoutApproov = false;
         private boolean serviceLoggingEnabled = false;
         private boolean interceptXMLHttpRequests = true;
         private boolean interceptMainFrameNavigations = false;
@@ -178,7 +178,12 @@ public final class ApproovWebViewConfig {
 
         /**
          * Controls whether requests may proceed without Approov protection when initialization or
-         * Approov-side networking fails. Defaults to {@code true} so the sample is fail-open.
+         * Approov-side networking fails.
+         *
+         * <p>Defaults to {@code false} (fail-closed): if Approov cannot produce a token the protected
+         * request is rejected rather than sent unprotected. This matches the iOS service layer. Set
+         * this to {@code true} only if you have deliberately chosen fail-open behavior for a flow that
+         * must remain available even when Approov is unreachable.
          */
         public Builder setAllowRequestsWithoutApproov(boolean allowRequestsWithoutApproov) {
             this.allowRequestsWithoutApproov = allowRequestsWithoutApproov;
