@@ -484,13 +484,39 @@ public final class ApproovWebViewService {
         }
 
         String url = response.request().url().toString();
-        runOnMainThread(() -> {
+
+        // storeResponseCookies runs on an OkHttp dispatcher thread, never the main
+        // thread, so it is safe to block here until the cookies are committed. The
+        // two-argument CookieManager.setCookie is asynchronous: a follow-up request
+        // calling getCookie could race it and miss a freshly issued session cookie,
+        // which is exactly how response cookies were being "dropped" between calls.
+        // The callback variant lets us wait until each cookie is durably stored.
+        if (Looper.myLooper() == Looper.getMainLooper()) {
             CookieManager cookieManager = CookieManager.getInstance();
             for (String cookieValue : setCookieHeaders) {
                 cookieManager.setCookie(url, cookieValue);
             }
             cookieManager.flush();
+            return;
+        }
+
+        CountDownLatch latch = new CountDownLatch(setCookieHeaders.size());
+        mainHandler.post(() -> {
+            CookieManager cookieManager = CookieManager.getInstance();
+            for (String cookieValue : setCookieHeaders) {
+                cookieManager.setCookie(url, cookieValue, stored -> latch.countDown());
+            }
+            cookieManager.flush();
         });
+
+        try {
+            if (!latch.await(5, TimeUnit.SECONDS)) {
+                Log.w(TAG, "Timed out waiting for WebView cookies to be committed for " + url);
+            }
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            Log.w(TAG, "Interrupted while waiting for WebView cookies to be committed.", exception);
+        }
     }
 
     private void configureSettings(WebSettings settings) {
@@ -796,6 +822,14 @@ public final class ApproovWebViewService {
     private JSONObject flattenHeaders(Headers headers) throws JSONException {
         JSONObject flattenedHeaders = new JSONObject();
         for (String name : headers.names()) {
+            // Withhold Set-Cookie from the page-facing payload. Browsers strip it
+            // from fetch/XMLHttpRequest visible headers so HttpOnly session cookies
+            // cannot be read by JavaScript. The cookies have already been applied to
+            // the native CookieManager, so the page never needs the raw header.
+            if ("set-cookie".equalsIgnoreCase(name) || "set-cookie2".equalsIgnoreCase(name)) {
+                continue;
+            }
+
             flattenedHeaders.put(name, headers.values(name).size() == 1
                 ? headers.get(name)
                 : String.join(", ", headers.values(name)));

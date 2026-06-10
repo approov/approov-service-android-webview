@@ -4,6 +4,18 @@ All notable changes to this package are documented in this file.
 
 The format is based on Keep a Changelog and this package follows Semantic Versioning.
 
+## [1.1.2] - 2026-06-10
+### Fixed
+  * Response cookies issued by a protected request are now reliably available to subsequent
+    protected requests. `storeResponseCookies` previously used the asynchronous two-argument
+    `CookieManager.setCookie`, so a follow-up request could call `getCookie` before the cookie was
+    committed and miss a freshly issued session cookie (for example a login or CSRF cookie). The
+    callback-based `setCookie` variant is now awaited before the request completes.
+### Security
+  * `Set-Cookie` and `Set-Cookie2` response headers are no longer forwarded to page JavaScript in
+    the bridge response payload, matching browser behavior and keeping `HttpOnly` session cookies
+    out of reach of page scripts. Cookies are still applied to the native `CookieManager`.
+
 ## [1.1.1] - 2026-06-05
 ### Fixed
   * Native-backed `fetch(...)` responses now construct Fetch `Response` objects with a null body for
