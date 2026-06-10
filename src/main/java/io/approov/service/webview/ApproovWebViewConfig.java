@@ -30,6 +30,8 @@ public final class ApproovWebViewConfig {
     private final boolean interceptXMLHttpRequests;
     private final boolean interceptMainFrameNavigations;
     private final boolean protectSameFrameHtmlFormSubmissions;
+    private final boolean acceptThirdPartyCookies;
+    private final boolean webContentsDebuggingEnabled;
     private final ApproovWebViewLogLevel okHttpLogLevel;
     private final long connectTimeoutMs;
     private final long readTimeoutMs;
@@ -48,6 +50,8 @@ public final class ApproovWebViewConfig {
         interceptXMLHttpRequests = builder.interceptXMLHttpRequests;
         interceptMainFrameNavigations = builder.interceptMainFrameNavigations;
         protectSameFrameHtmlFormSubmissions = builder.protectSameFrameHtmlFormSubmissions;
+        acceptThirdPartyCookies = builder.acceptThirdPartyCookies;
+        webContentsDebuggingEnabled = builder.webContentsDebuggingEnabled;
         okHttpLogLevel = builder.okHttpLogLevel;
         connectTimeoutMs = builder.connectTimeoutMs;
         readTimeoutMs = builder.readTimeoutMs;
@@ -88,6 +92,14 @@ public final class ApproovWebViewConfig {
 
     public boolean protectsSameFrameHtmlFormSubmissions() {
         return protectSameFrameHtmlFormSubmissions;
+    }
+
+    public boolean acceptsThirdPartyCookies() {
+        return acceptThirdPartyCookies;
+    }
+
+    public boolean isWebContentsDebuggingEnabled() {
+        return webContentsDebuggingEnabled;
     }
 
     public ApproovWebViewLogLevel getOkHttpLogLevel() {
@@ -135,11 +147,13 @@ public final class ApproovWebViewConfig {
         private final String approovConfig;
         private String approovDevKey = "";
         private String approovTokenHeaderName = "approov-token";
-        private boolean allowRequestsWithoutApproov = true;
+        private boolean allowRequestsWithoutApproov = false;
         private boolean serviceLoggingEnabled = false;
         private boolean interceptXMLHttpRequests = true;
         private boolean interceptMainFrameNavigations = false;
         private boolean protectSameFrameHtmlFormSubmissions = false;
+        private boolean acceptThirdPartyCookies = true;
+        private boolean webContentsDebuggingEnabled = false;
         private ApproovWebViewLogLevel okHttpLogLevel = ApproovWebViewLogLevel.NONE;
         private long connectTimeoutMs = 0;
         private long readTimeoutMs = 0;
@@ -178,7 +192,12 @@ public final class ApproovWebViewConfig {
 
         /**
          * Controls whether requests may proceed without Approov protection when initialization or
-         * Approov-side networking fails. Defaults to {@code true} so the sample is fail-open.
+         * Approov-side networking fails.
+         *
+         * <p>Defaults to {@code false} (fail-closed): if Approov cannot produce a token the protected
+         * request is rejected rather than sent unprotected. This matches the iOS service layer. Set
+         * this to {@code true} only if you have deliberately chosen fail-open behavior for a flow that
+         * must remain available even when Approov is unreachable.
          */
         public Builder setAllowRequestsWithoutApproov(boolean allowRequestsWithoutApproov) {
             this.allowRequestsWithoutApproov = allowRequestsWithoutApproov;
@@ -225,6 +244,31 @@ public final class ApproovWebViewConfig {
          */
         public Builder setProtectSameFrameHtmlFormSubmissions(boolean protectSameFrameHtmlFormSubmissions) {
             this.protectSameFrameHtmlFormSubmissions = protectSameFrameHtmlFormSubmissions;
+            return this;
+        }
+
+        /**
+         * Controls whether the configured WebView accepts third-party cookies.
+         *
+         * <p>Defaults to {@code true}. Protected funnels often call an API host that differs from the
+         * page origin, and a WebView rejects third-party cookies by default, which breaks those
+         * cross-site session cookies. Set to {@code false} if your funnel is strictly same-site and
+         * you want the stricter default.
+         */
+        public Builder setAcceptThirdPartyCookies(boolean acceptThirdPartyCookies) {
+            this.acceptThirdPartyCookies = acceptThirdPartyCookies;
+            return this;
+        }
+
+        /**
+         * Controls whether WebView contents debugging (remote inspection) is enabled.
+         *
+         * <p>Defaults to {@code false}. Enable only for local debugging; never ship it enabled. This
+         * is independent of the library's own build type so a release app is never inspectable just
+         * because it consumed a debug build of this library.
+         */
+        public Builder setWebContentsDebuggingEnabled(boolean webContentsDebuggingEnabled) {
+            this.webContentsDebuggingEnabled = webContentsDebuggingEnabled;
             return this;
         }
 

@@ -176,6 +176,46 @@ public class ApproovWebViewProtectionInstrumentationTest {
     }
 
     @Test
+    public void protectedResponseCookieIsSentOnFollowUpRequest() throws Exception {
+        // Regression test for the reported funnel break: a protected request that
+        // returns Set-Cookie must make that cookie available to the next protected
+        // request, otherwise session-dependent flows fail with 403.
+        HttpUrl loginUrl = server.url("/protected/login");
+        HttpUrl profileUrl = server.url("/protected/profile");
+        server.enqueue(new MockResponse()
+            .setResponseCode(200)
+            .setHeader("Access-Control-Allow-Origin", TRUSTED_ORIGIN)
+            .setHeader("Set-Cookie", "session_id=server-issued; Path=/")
+            .setHeader("Content-Type", "application/json")
+            .setBody("{\"status\":\"login-ok\"}"));
+        server.enqueue(jsonResponse("{\"status\":\"profile-ok\"}"));
+
+        initializeService(
+            new ApproovWebViewConfig.Builder("")
+                .setAllowRequestsWithoutApproov(true)
+                .addAllowedOriginRule(TRUSTED_ORIGIN)
+                .addNativeRequestRule(
+                    ApproovWebViewNativeRequestRule.builder(loginUrl.host())
+                        .includePathPrefix("/protected")
+                        .build()
+                )
+                .build()
+        );
+
+        webView = loadTestPage(buildTwoRequestCookiePage(loginUrl.toString(), profileUrl.toString()));
+        JSONObject result = waitForPageResult();
+
+        assertTrue(result.toString(), result.getBoolean("ok"));
+
+        RecordedRequest loginRequest = takeServerRequest();
+        assertEquals("/protected/login", loginRequest.getPath());
+
+        RecordedRequest profileRequest = takeServerRequest();
+        assertEquals("/protected/profile", profileRequest.getPath());
+        assertEquals("session_id=server-issued", profileRequest.getHeader("Cookie"));
+    }
+
+    @Test
     public void protectedPostPreservesMethodBodyAndContentType() throws Exception {
         HttpUrl protectedUrl = server.url("/protected/orders");
         server.enqueue(jsonResponse("{\"status\":\"post-ok\"}"));
@@ -409,6 +449,33 @@ public class ApproovWebViewProtectionInstrumentationTest {
             + "    };"
             + "    if (error && error.code) { payload.code = error.code; }"
             + "    window.__approovTestResult = JSON.stringify(payload);"
+            + "  }"
+            + "}());"
+            + "</script></body></html>";
+    }
+
+    private String buildTwoRequestCookiePage(String firstUrl, String secondUrl) {
+        // Fetches firstUrl (which returns Set-Cookie) and then secondUrl, both with
+        // credentials so the bridge attaches stored cookies, and reports the second
+        // response so the test can assert the cookie was carried over.
+        return "<!doctype html><html><body><script>"
+            + "(async function () {"
+            + "  try {"
+            + "    await fetch(" + JSONObject.quote(firstUrl) + ", { credentials: 'include' });"
+            + "    const second = await fetch(" + JSONObject.quote(secondUrl) + ", { credentials: 'include' });"
+            + "    const body = await second.text();"
+            + "    window.__approovTestResult = JSON.stringify({"
+            + "      body: body,"
+            + "      kind: 'cookie_cycle',"
+            + "      ok: second.ok,"
+            + "      status: second.status"
+            + "    });"
+            + "  } catch (error) {"
+            + "    window.__approovTestResult = JSON.stringify({"
+            + "      kind: 'cookie_cycle_error',"
+            + "      message: String(error && error.message || error),"
+            + "      ok: false"
+            + "    });"
             + "  }"
             + "}());"
             + "</script></body></html>";
