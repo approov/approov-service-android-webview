@@ -4,7 +4,7 @@ All notable changes to this package are documented in this file.
 
 The format is based on Keep a Changelog and this package follows Semantic Versioning.
 
-## [Unreleased]
+## [1.1.2] - 2026-06-10
 ### Changed
   * **BREAKING (security):** `setAllowRequestsWithoutApproov` now defaults to `false` (fail-closed),
     matching the iOS service layer. Previously it defaulted to `true`, so a misconfigured or
@@ -22,8 +22,6 @@ The format is based on Keep a Changelog and this package follows Semantic Versio
     session cookies.
   * Instrumentation coverage for the response-cookie -> follow-up-request cycle (a protected request
     that returns `Set-Cookie` followed by a protected request that must carry the cookie).
-
-## [1.1.2] - 2026-06-10
 ### Fixed
   * Response cookies issued by a protected request are now reliably available to subsequent
     protected requests. `storeResponseCookies` previously used the asynchronous two-argument
