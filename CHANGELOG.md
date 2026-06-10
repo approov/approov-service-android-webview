@@ -4,7 +4,7 @@ All notable changes to this package are documented in this file.
 
 The format is based on Keep a Changelog and this package follows Semantic Versioning.
 
-## [1.1.2] - 2026-06-10
+## [1.2] - 2026-06-10
 ### Changed
   * **BREAKING (security):** `setAllowRequestsWithoutApproov` now defaults to `false` (fail-closed),
     matching the iOS service layer. Previously it defaulted to `true`, so a misconfigured or
