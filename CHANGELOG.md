@@ -4,6 +4,25 @@ All notable changes to this package are documented in this file.
 
 The format is based on Keep a Changelog and this package follows Semantic Versioning.
 
+## [Unreleased]
+### Changed
+  * **BREAKING (security):** `setAllowRequestsWithoutApproov` now defaults to `false` (fail-closed),
+    matching the iOS service layer. Previously it defaulted to `true`, so a misconfigured or
+    offline Approov SDK would silently send protected WebView requests without an Approov token.
+    Integrations that intentionally rely on fail-open behavior must now opt in explicitly with
+    `.setAllowRequestsWithoutApproov(true)`.
+  * WebView contents debugging is no longer tied to the library module's `BuildConfig.DEBUG` (which
+    does not reflect the host app's build type). It is now controlled by
+    `setWebContentsDebuggingEnabled(boolean)` and defaults to `false`, so a release app can never be
+    left remotely inspectable by accident.
+### Added
+  * `setAcceptThirdPartyCookies(boolean)` (default `true`) controls whether the configured WebView
+    accepts third-party cookies. Protected funnels frequently call an API host that differs from the
+    page origin, where a WebView's default third-party-cookie rejection would break cross-site
+    session cookies.
+  * Instrumentation coverage for the response-cookie -> follow-up-request cycle (a protected request
+    that returns `Set-Cookie` followed by a protected request that must carry the cookie).
+
 ## [1.1.2] - 2026-06-10
 ### Fixed
   * Response cookies issued by a protected request are now reliably available to subsequent

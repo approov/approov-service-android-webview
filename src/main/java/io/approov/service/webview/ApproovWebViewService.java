@@ -148,7 +148,16 @@ public final class ApproovWebViewService {
         requireFeature(WebViewFeature.WEB_MESSAGE_LISTENER, "WEB_MESSAGE_LISTENER");
 
         configureSettings(webView.getSettings());
-        WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG);
+        // Keep WebView contents debugging opt-in and off by default rather than
+        // keying it to the library module's BuildConfig.DEBUG, which does not
+        // reflect the host app's build type and could leave inspection enabled in
+        // a release app that consumes a debug-built library.
+        WebView.setWebContentsDebuggingEnabled(config.isWebContentsDebuggingEnabled());
+        // Protected funnels frequently call an API host that differs from the page
+        // origin. Third-party cookies are off by default in a WebView, which can
+        // break those cross-site session cookies, so allow them by default for the
+        // configured WebView (still controllable through the config).
+        CookieManager.getInstance().setAcceptThirdPartyCookies(webView, config.acceptsThirdPartyCookies());
 
         if (preparedWebViews.put(webView, Boolean.TRUE) != null) {
             return;
